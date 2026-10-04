@@ -215,6 +215,7 @@ assign costfactor
   add cobblepenalty
 
   switch highway=motorway|motorway_link              10000
+  switch route=ferry                                 switch ferries_allowed 5.67 10000
   switch has_cycletrack_on_road                      CycleTrackCostfactor
   switch highway=trunk|trunk_link                    10
   switch highway=primary|primary_link                multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 4.0 4.8
@@ -225,7 +226,6 @@ assign costfactor
   switch highway=unclassified                        switch isunpaved UnpavedCostfactor 1.0
   switch highway=pedestrian                          switch ispaved 10 UnpavedCostfactor
   switch highway=steps                               1000
-  switch route=ferry                                 switch ferries_allowed 5.67 10000
   switch highway=bridleway                           UnpavedCostfactor
   switch highway=cycleway                            switch ispaved 1.0 UnpavedCostfactor
   switch highway=footway                             switch ispaved 5.0 UnpavedCostfactor
