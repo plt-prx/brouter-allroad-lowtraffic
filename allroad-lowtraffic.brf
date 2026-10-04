@@ -7,7 +7,7 @@
 # - Allows smooth gravel / compacted forest roads and big signed cycle routes (EuroVelo, national, regional).
 # - Avoids sand, mud and grass tracks, grade4-5 tracks and unpaved paths without bicycle designation.
 #
-# Default tuning gives about 70 % paved / 30 % unpaved around Berlin. Raise PavedPenalty for more gravel.
+# Default tuning gives about 65 % paved / 35 % unpaved around Berlin. Raise PavedPenalty for more gravel.
 
 ---context:global
 
@@ -22,6 +22,7 @@ assign CycleRouteCostfactor   = 1.0  # %CycleRouteCostfactor% | Base cost of pav
 assign CycleTrackCostfactor   = 1.3  # %CycleTrackCostfactor% | Base cost of a road with a bike track mapped on it | number
 assign MainRoadFactor         = 2.0  # %MainRoadFactor% | Multiplier for primary/secondary/tertiary base costs above 30 km/h (higher = avoid more) | number
 assign PavedPenalty           = 2.0  # %PavedPenalty% | Extra cost on paved ways (higher = more gravel) | number
+assign CobblePenalty          = 3.0  # %CobblePenalty% | Extra cost on cobblestones / sett | number
 assign CycleRoutePavedShare   = 0.5  # %CycleRoutePavedShare% | Share of PavedPenalty paid on big cycle routes (0 = routes preferred, 1 = no route bonus) | number
 
 # +++ Switches
@@ -191,6 +192,10 @@ assign pavedpenalty
         switch is_big_cycleroute ( multiply CycleRoutePavedShare PavedPenalty ) PavedPenalty
         0
 
+# cobblestones / sett; not on roads with a bike track
+assign cobblepenalty
+    switch and surface=cobblestone|sett not has_cycletrack_on_road CobblePenalty 0
+
 # --- Costs read by the engine
 
 assign turncost    switch junction=roundabout 0 90
@@ -207,6 +212,7 @@ assign costfactor
   add trafficpenalty
   add maxspeedpenalty
   add pavedpenalty
+  add cobblepenalty
 
   switch highway=motorway|motorway_link              10000
   switch has_cycletrack_on_road                      CycleTrackCostfactor
