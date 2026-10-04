@@ -12,8 +12,8 @@ A [BRouter](https://github.com/abrensch/brouter) routing profile for allroad and
 | Big signed cycle routes (EuroVelo, national, regional) | Preferred when paved |
 | Smooth gravel (`compacted`, `fine_gravel`, `gravel` on grade1–3 tracks) | Preferred |
 | Cobblestones / sett | Avoided |
-| Dirt, ground or untagged tracks | Allowed at moderate cost |
-| Sand, mud and grass tracks, grade4–5 tracks, unpaved paths without bicycle designation | Avoided |
+| Dirt, ground or untagged tracks; dirt or ground paths marked for bikes | Allowed at moderate cost |
+| Sand, mud and grass tracks and paths, grade4–5 tracks, unpaved paths without bicycle designation | Avoided |
 | Climbs and descents | Free by default |
 
 ## Settings
@@ -34,6 +34,7 @@ Base cost of an asphalt cycleway = 1.0.
 | `CycleRoutePavedShare` | 0.5 | Share of `PavedPenalty` paid on big cycle routes; 0 = routes preferred, 1 = no route bonus |
 | `consider_elevation` | false | Penalise climbs and descents |
 | `ferries_allowed` | false | Allow ferries |
+| `allow_unpaved_paths` | false | Treat dirt/ground paths marked for bikes like bike paths: more forest, risk of sandy patches |
 
 ## Test results
 
@@ -41,13 +42,13 @@ BRouter 1.7.10, routing data `E10_N50.rd5` of 2026-10-04, default settings of bo
 
 | | Rennrad (sehr wenig Verkehr) | allroad-lowtraffic |
 |---|---|---|
-| Total distance | 212.9 km | 247.5 km |
-| Unpaved share | 2 % | 35 % |
-| On big signed cycle routes | 46.5 km | 118.7 km |
-| On smooth gravel | 0.2 km | 71.5 km |
-| Primary / secondary roads without bike track | 38.0 km | 4.6 km |
-| Other roads with estimated traffic class ≥ 4 | 9.7 km | 1.8 km |
-| Cobblestones / sett | 1.3 km | 1.4 km |
+| Total distance | 212.9 km | 243.7 km |
+| Unpaved share | 2 % | 30 % |
+| On big signed cycle routes | 46.5 km | 125.4 km |
+| On smooth gravel | 0.2 km | 63.6 km |
+| Primary / secondary roads without bike track | 38.0 km | 3.8 km |
+| Other roads with estimated traffic class ≥ 4 | 9.7 km | 1.9 km |
+| Cobblestones / sett | 1.3 km | 2.0 km |
 | Sand | 0 km | 0 km |
 
 Routes: Alexanderplatz–Bernau, Kreuzberg–Potsdam, Köpenick–Erkner, Oranienburg–Pankow, Königs Wusterhausen–Neukölln, Bernau–Eberswalde, Potsdam–Werder, Erkner–Fürstenwalde, Oranienburg–Liebenwalde.

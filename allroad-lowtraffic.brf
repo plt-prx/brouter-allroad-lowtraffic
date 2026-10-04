@@ -7,7 +7,7 @@
 # - Allows smooth gravel / compacted forest roads and big signed cycle routes (EuroVelo, national, regional).
 # - Avoids sand, mud and grass tracks, grade4-5 tracks and unpaved paths without bicycle designation.
 #
-# Default tuning gives about 65 % paved / 35 % unpaved around Berlin. Raise PavedPenalty for more gravel.
+# Default tuning gives about 70 % paved / 30 % unpaved around Berlin. Raise PavedPenalty for more gravel.
 
 ---context:global
 
@@ -27,6 +27,7 @@ assign CycleRoutePavedShare   = 0.5  # %CycleRoutePavedShare% | Share of PavedPe
 
 # +++ Switches
 assign ferries_allowed   = false     # %ferries_allowed% | Allow ferries | boolean
+assign allow_unpaved_paths = false   # %allow_unpaved_paths% | Treat dirt/ground paths marked for bikes like bike paths: more forest, risk of sandy patches | boolean
 assign processUnusedTags = true      # %processUnusedTags% | Show unused tags in the data tab | boolean
 
 # +++ Turn instructions
@@ -81,7 +82,7 @@ assign is_paved_way
 
 # compacted / fine gravel, or gravel on grade1-3 tracks or with intermediate-or-better smoothness
 assign is_smooth_gravel
-    and highway=track|path|cycleway|bridleway|unclassified|residential|service|road
+    and highway=track|path|cycleway|unclassified|residential|service|road
     and or surface=compacted|fine_gravel and surface=gravel ( or tracktype=grade1|grade2|grade3 smoothness=excellent|good|intermediate )
         not smoothness=very_bad|horrible|very_horrible|impassable
 
@@ -96,7 +97,8 @@ assign is_ok_unpaved_track
 # --- Access
 
 assign bikeaccess =
-       if any_cycleroute then true
+       if bicycle=no|dismount|private then false
+       else if any_cycleroute then true
        else if bicycle= then
        (
          if vehicle= then
@@ -222,7 +224,7 @@ assign costfactor
   switch highway=secondary|secondary_link            multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 3.0 4.0
   switch highway=tertiary|tertiary_link              switch isunpaved UnpavedCostfactor multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 2.0 2.5
   switch is_smooth_gravel                            GravelCostfactor
-  switch and is_big_cycleroute ( or ispaved surface= )  CycleRouteCostfactor
+  switch and is_big_cycleroute and ( or ispaved surface= ) highway=cycleway|path|track|road|unclassified|residential|living_street|service  CycleRouteCostfactor
   switch highway=unclassified                        switch isunpaved UnpavedCostfactor 1.0
   switch highway=pedestrian                          switch ispaved 10 UnpavedCostfactor
   switch highway=steps                               1000
@@ -237,7 +239,10 @@ assign costfactor
       switch tracktype=grade2                        switch ispaved 2.0 switch isunpaved UnpavedCostfactor UnknownTrackCostfactor
       switch and ispaved tracktype=                  3.0 UnpavedCostfactor
   switch highway=path
-      switch bicycle=yes|designated                  1.1
+      switch bicycle=yes|designated
+          switch surface=sand|mud|grass|clay         UnpavedCostfactor
+          switch and isunpaved not allow_unpaved_paths  TrackUnpavedCostfactor
+                                                     1.1
       switch ispaved                                 3.0 UnpavedCostfactor
   UnpavedCostfactor
 
