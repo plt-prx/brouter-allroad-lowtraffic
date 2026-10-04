@@ -54,4 +54,4 @@ Routes: Alexanderplatz–Bernau, Kreuzberg–Potsdam, Köpenick–Erkner, Oranie
 
 ## Credits
 
-Based on bikerouter.de's "Rennrad (sehr wenig Verkehr)" profile, itself derived from BRouter's fastbike profile. Map data © OpenStreetMap contributors.
+Based on bikerouter.de's "Rennrad (sehr wenig Verkehr)" profile, itself derived from BRouter's fastbike profile.
