@@ -1,0 +1,297 @@
+# allroad-lowtraffic.brf
+#
+# Allroad bike profile based on bikerouter.de's "Rennrad (sehr wenig Verkehr)" profile,
+# itself derived from BRouter's fastbike profile (additive cost model).
+# - Avoids main roads, high estimated traffic and fast roads.
+# - Roads with a bike track mapped on them count as bike paths.
+# - Allows smooth gravel / compacted forest roads and big signed cycle routes (EuroVelo, national, regional).
+# - Avoids sand, mud and grass tracks, grade4-5 tracks and unpaved paths without bicycle designation.
+#
+# Default tuning gives about 70 % paved / 30 % unpaved around Berlin. Raise PavedPenalty for more gravel.
+
+---context:global
+
+assign validForBikes 1
+
+# +++ Cost parameters (base cost of an asphalt cycleway = 1.0)
+assign GravelCostfactor       = 0.8  # %GravelCostfactor% | Base cost of smooth gravel / compacted forest roads | number
+assign TrackUnpavedCostfactor = 4.0  # %TrackUnpavedCostfactor% | Base cost of other unpaved tracks (dirt, ground, untagged; not sand, mud, grass, grade4-5) | number
+assign UnknownTrackCostfactor = 3.0  # %UnknownTrackCostfactor% | Base cost of grade1/grade2 tracks without surface tag | number
+assign UnpavedCostfactor      = 25.0 # %UnpavedCostfactor% | Base cost of all other unpaved ways (sand, mud, unpaved paths, ...) | number
+assign CycleRouteCostfactor   = 1.0  # %CycleRouteCostfactor% | Base cost of paved ways on big signed cycle routes | number
+assign CycleTrackCostfactor   = 1.3  # %CycleTrackCostfactor% | Base cost of a road with a bike track mapped on it | number
+assign MainRoadFactor         = 2.0  # %MainRoadFactor% | Multiplier for primary/secondary/tertiary base costs above 30 km/h (higher = avoid more) | number
+assign PavedPenalty           = 2.0  # %PavedPenalty% | Extra cost on paved ways (higher = more gravel) | number
+assign CycleRoutePavedShare   = 0.5  # %CycleRoutePavedShare% | Share of PavedPenalty paid on big cycle routes (0 = routes preferred, 1 = no route bonus) | number
+
+# +++ Switches
+assign ferries_allowed   = false     # %ferries_allowed% | Allow ferries | boolean
+assign processUnusedTags = true      # %processUnusedTags% | Show unused tags in the data tab | boolean
+
+# +++ Turn instructions
+assign turnInstructionMode          = 1     # %turnInstructionMode% | Mode for the generated turn instructions | [0=none, 1=auto-choose, 2=locus-style, 3=osmand-style, 4=comment-style, 5=gpsies-style, 6=oruxmaps-style]
+assign turnInstructionCatchingRange = 40    # %turnInstructionCatchingRange% | Within this distance (in m) several turning instructions are combined into one | number
+assign turnInstructionRoundabouts   = true  # %turnInstructionRoundabouts% | Special turn instructions for roundabouts | boolean
+
+# +++ Elevation (read by the engine): with consider_elevation, each metre of climb / descent
+# beyond the cutoff gradient (in %) counts as 80 m extra distance; without it, both are free
+assign consider_elevation = false # %consider_elevation% | Penalise climbs and descents | boolean
+assign uphillcost     switch consider_elevation 80 0
+assign uphillcutoff   1.0
+assign downhillcost   switch consider_elevation 80 0
+assign downhillcutoff 0.5
+
+---context:way
+
+# --- Cycle routes
+
+assign any_cycleroute    or route_bicycle_icn=yes or route_bicycle_ncn=yes or route_bicycle_rcn=yes route_bicycle_lcn=yes
+assign is_big_cycleroute or route_bicycle_icn=yes or route_bicycle_ncn=yes route_bicycle_rcn=yes
+
+# read by the engine: grants bike access on nodes along cycle routes
+assign nodeaccessgranted or any_cycleroute lcn=yes
+
+# --- Bike track mapped as a tag on the road (not as a separate way), usable in the travel direction
+
+assign has_cycletrack
+    or cycleway=track|opposite_track
+    or cycleway:both=track
+    or and cycleway:right=track ( or reversedirection= cycleway:right:oneway=no )
+       and cycleway:left=track  ( or reversedirection=yes cycleway:left:oneway=no )
+
+assign has_cycletrack_on_road
+    and has_cycletrack highway=trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road
+
+# speed limit 30 km/h or lower: no MainRoadFactor, half traffic penalty (avoids detours around short calm stretches)
+assign is_slow_road maxspeed=30|20|10
+
+# --- Surface classes
+
+assign ispaved surface=paved|asphalt|concrete|paving_stones
+
+# untagged surface, fine_gravel and cobblestone do not count as unpaved
+assign isunpaved not or surface= or ispaved surface=fine_gravel|cobblestone
+
+# paved surface, cobbles, or untagged surface on a road
+assign is_paved_way
+    or ispaved
+    or surface=sett|cobblestone
+       and surface= highway=primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road|cycleway
+
+# compacted / fine gravel, or gravel on grade1-3 tracks or with intermediate-or-better smoothness
+assign is_smooth_gravel
+    and highway=track|path|cycleway|bridleway|unclassified|residential|service|road
+    and or surface=compacted|fine_gravel and surface=gravel ( or tracktype=grade1|grade2|grade3 smoothness=excellent|good|intermediate )
+        not smoothness=very_bad|horrible|very_horrible|impassable
+
+# dirt, ground or untagged tracks; not sand, mud, grass, clay, grade4-5 or very bad smoothness
+assign is_ok_unpaved_track
+    and highway=track
+    and ( or isunpaved surface= )
+    and not surface=sand|mud|grass|clay
+    and not tracktype=grade4|grade5
+        not smoothness=very_bad|horrible|very_horrible|impassable
+
+# --- Access
+
+assign bikeaccess =
+       if any_cycleroute then true
+       else if bicycle= then
+       (
+         if vehicle= then
+         (
+           if access= then not or motorroad=yes highway=footway
+           else if access=private|no then false
+           else true
+         )
+         else not vehicle=private|no
+       )
+       else not bicycle=private|no|dismount
+
+assign footaccess =
+       if bikeaccess then true
+       else if bicycle=dismount then true
+       else if foot= then
+       (
+         if access= then not motorroad=yes
+         else if access=private|no then false
+         else true
+       )
+       else not foot=private|no
+
+# pushing the bike is allowed (+6), no access at all is forbidden
+assign accesspenalty =
+       if bikeaccess then 0
+       else if footaccess then 6
+       else 100000
+
+# --- Penalties added to the base cost
+
+# riding against a oneway: close to forbidden on main roads, +6 (pushing) elsewhere
+assign badoneway =
+       if reversedirection=yes then
+         if oneway:bicycle=yes then true
+         else if oneway= then junction=roundabout
+         else oneway=yes|1
+       else oneway=-1
+
+assign onewaypenalty =
+       if ( badoneway ) then
+       (
+         if ( cycleway=opposite|opposite_lane|opposite_track ) then 0
+         else if ( oneway:bicycle=no                         ) then 0
+         else if ( highway=primary|primary_link              ) then 50
+         else if ( highway=secondary|secondary_link          ) then 30
+         else if ( highway=tertiary|tertiary_link            ) then 20
+         else 6.0
+       )
+       else 0.0
+
+# estimated motor traffic; not on roads with a bike track, half on slow roads
+assign trafficpenalty =
+    if has_cycletrack_on_road then 0
+    else multiply ( switch is_slow_road 0.5 1 ) if highway=primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|road|service|living_street then
+    (
+      if      estimated_traffic_class=3   then 0.5
+      else if estimated_traffic_class=4   then 1.5
+      else if estimated_traffic_class=5   then 2.5
+      else if estimated_traffic_class=6|7 then 4
+      else 0
+    )
+    else 0
+
+# speed limit; not on roads with a bike track
+assign maxspeedpenalty =
+    if has_cycletrack_on_road then 0
+    else if maxspeed=70  then 0.3
+    else if maxspeed=80  then 0.5
+    else if maxspeed=90  then 0.8
+    else if maxspeed=100 then 1.2
+    else 0
+
+# smoothness: milder scale on smooth gravel; unknown smoothness counts as "good"
+assign gravelsmoothness
+    switch smoothness=bad           1.5
+    switch smoothness=intermediate  1.2
+                                    1.0
+
+assign smoothnesspenalty
+    switch is_smooth_gravel         gravelsmoothness
+    switch smoothness=excellent     1.0
+    switch smoothness=good          1.1
+    switch smoothness=intermediate  1.5
+    switch smoothness=bad           2.5
+    switch smoothness=very_bad      3.5
+    switch smoothness=              1.1
+                                    5     # horrible, very_horrible, impassable
+
+# paved ways pay PavedPenalty; big cycle routes pay CycleRoutePavedShare of it
+assign pavedpenalty
+    switch and is_paved_way not is_smooth_gravel
+        switch is_big_cycleroute ( multiply CycleRoutePavedShare PavedPenalty ) PavedPenalty
+        0
+
+# --- Costs read by the engine
+
+assign turncost    switch junction=roundabout 0 90
+assign initialcost switch route=ferry 10000 0
+
+# costfactor = penalties + base cost by way type (first match wins)
+assign costfactor
+  switch and highway= not route=ferry                10000
+  switch highway=proposed|abandoned|construction     10000
+
+  min 9999
+  add max onewaypenalty accesspenalty
+  add smoothnesspenalty
+  add trafficpenalty
+  add maxspeedpenalty
+  add pavedpenalty
+
+  switch highway=motorway|motorway_link              10000
+  switch has_cycletrack_on_road                      CycleTrackCostfactor
+  switch highway=trunk|trunk_link                    10
+  switch highway=primary|primary_link                multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 4.0 4.8
+  switch highway=secondary|secondary_link            multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 3.0 4.0
+  switch highway=tertiary|tertiary_link              switch isunpaved UnpavedCostfactor multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 2.0 2.5
+  switch is_smooth_gravel                            GravelCostfactor
+  switch and is_big_cycleroute ( or ispaved surface= )  CycleRouteCostfactor
+  switch highway=unclassified                        switch isunpaved UnpavedCostfactor 1.0
+  switch highway=pedestrian                          switch ispaved 10 UnpavedCostfactor
+  switch highway=steps                               1000
+  switch route=ferry                                 switch ferries_allowed 5.67 10000
+  switch highway=bridleway                           UnpavedCostfactor
+  switch highway=cycleway                            switch ispaved 1.0 UnpavedCostfactor
+  switch highway=footway                             switch ispaved 5.0 UnpavedCostfactor
+  switch highway=residential|living_street           switch isunpaved UnpavedCostfactor 1.1
+  switch highway=service                             switch isunpaved UnpavedCostfactor 1.1
+  switch is_ok_unpaved_track                         TrackUnpavedCostfactor
+  switch highway=track|road
+      switch tracktype=grade1                        switch ispaved 1.1 switch isunpaved UnpavedCostfactor UnknownTrackCostfactor
+      switch tracktype=grade2                        switch ispaved 2.0 switch isunpaved UnpavedCostfactor UnknownTrackCostfactor
+      switch and ispaved tracktype=                  3.0 UnpavedCostfactor
+  switch highway=path
+      switch bicycle=yes|designated                  1.1
+      switch ispaved                                 3.0 UnpavedCostfactor
+  UnpavedCostfactor
+
+# way priority for turn instructions (read by the engine)
+assign priorityclassifier =
+  if      ( highway=motorway                    ) then 30
+  else if ( highway=motorway_link               ) then 29
+  else if ( highway=trunk                       ) then 28
+  else if ( highway=trunk_link                  ) then 27
+  else if ( highway=primary                     ) then 26
+  else if ( highway=primary_link                ) then 25
+  else if ( highway=secondary                   ) then 24
+  else if ( highway=secondary_link              ) then 23
+  else if ( highway=tertiary                    ) then 22
+  else if ( highway=tertiary_link               ) then 21
+  else if ( highway=unclassified                ) then 20
+  else if ( highway=residential|living_street   ) then 6
+  else if ( highway=service                     ) then 6
+  else if ( highway=cycleway                    ) then 6
+  else if ( bicycle=designated                  ) then 6
+  else if ( highway=track                       ) then if tracktype=grade1 then 6 else 4
+  else if ( highway=bridleway|road|path|footway ) then 4
+  else if ( highway=steps                       ) then 2
+  else if ( highway=pedestrian                  ) then 2
+  else 0
+
+---context:node
+
+# no access tag = allowed; access=private|no = forbidden
+assign defaultaccess
+       switch access=
+              1
+              switch or access=private access=no
+                     0
+                     1
+
+assign bikeaccess
+       or nodeaccessgranted=yes
+          switch bicycle=
+                 switch vehicle=
+                        defaultaccess
+                        switch or vehicle=private vehicle=no
+                               0
+                               1
+                 switch or bicycle=private or bicycle=no bicycle=dismount
+                        0
+                        1
+
+assign footaccess
+       or bicycle=dismount
+          switch foot=
+                 defaultaccess
+                 switch or foot=private foot=no
+                        0
+                        1
+
+# barrier without bike access: +300 if pushing is allowed, otherwise forbidden
+assign initialcost
+       switch bikeaccess
+              0
+              switch footaccess
+                     300
+                     1000000
