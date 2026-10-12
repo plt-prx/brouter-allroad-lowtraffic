@@ -5,10 +5,11 @@
 # - Avoids main roads with high estimated traffic; quiet main roads are fine at any speed limit.
 # - Avoids bike paths and sidewalks of paving stones, sett or cobbles; rides the road instead.
 # - Roads with a bike track mapped on them count as bike paths only with asphalt/concrete track surface.
+# - Roads with a painted bike lane count as bike paths.
 # - Allows smooth gravel / compacted forest roads and big signed cycle routes (EuroVelo, national, regional).
 # - Avoids sand, mud and grass tracks, grade4-5 tracks and unpaved paths without bicycle designation.
 #
-# Default tuning gives about 72 % paved / 28 % unpaved around Berlin. Raise PavedPenalty for more gravel.
+# Default tuning gives about 75 % paved / 25 % unpaved around Berlin. Raise PavedPenalty for more gravel.
 
 ---context:global
 
@@ -25,10 +26,10 @@ assign TrackUnpavedCostfactor = 4.0  # %TrackUnpavedCostfactor% | Base cost of o
 assign UnknownTrackCostfactor = 3.0  # %UnknownTrackCostfactor% | Base cost of grade1/grade2 tracks without surface tag | number
 assign UnpavedCostfactor      = 25.0 # %UnpavedCostfactor% | Base cost of all other unpaved ways (sand, mud, unpaved paths, ...) | number
 assign CycleRouteCostfactor   = 1.0  # %CycleRouteCostfactor% | Base cost of paved ways on big signed cycle routes | number
-assign CycleTrackCostfactor   = 1.3  # %CycleTrackCostfactor% | Base cost of a road with a bike track mapped on it | number
+assign CycleTrackCostfactor   = 1.3  # %CycleTrackCostfactor% | Base cost of a road with an asphalt bike track or painted bike lane | number
 assign MainRoadFactor         = 2.0  # %MainRoadFactor% | Multiplier for base costs of busy primary/secondary/tertiary roads (higher = avoid more) | number
 assign PavedPenalty           = 2.0  # %PavedPenalty% | Extra cost on paved ways (higher = more gravel) | number
-assign CobblePenalty          = 3.0  # %CobblePenalty% | Extra cost on cobblestones / sett | number
+assign CobblePenalty          = 5.0  # %CobblePenalty% | Extra cost on cobblestones / sett | number
 assign PavingStonesPenalty    = 20.0 # %PavingStonesPenalty% | Extra cost on bike paths and sidewalks of paving stones, sett or cobbles (20 = only used without alternative) | number
 assign CycleRoutePavedShare   = 0.5  # %CycleRoutePavedShare% | Share of PavedPenalty paid on big cycle routes (0 = routes preferred, 1 = no route bonus) | number
 assign TurnCost               = 150  # %TurnCost% | Cost of a 90 degree turn (higher = fewer detours around single blocks) | number
@@ -69,12 +70,20 @@ assign has_cycletrack
     or and cycleway:right=track ( or reversedirection= cycleway:right:oneway=no )
        and cycleway:left=track  ( or reversedirection=yes cycleway:left:oneway=no )
 
-# counts as a bike path only with asphalt/concrete track surface; otherwise the road is costed as a road
-# (most on-road tracks are old paving-stone tracks; the data has no side-specific track surface)
-assign has_cycletrack_on_road
-    and has_cycletrack
+# --- Painted bike lane on the road (solid or dashed line), usable in the travel direction
+
+assign has_bikelane
+    or cycleway=lane
+    or cycleway:both=lane
+    or and cycleway:right=lane ( or reversedirection= cycleway:right:oneway=no )
+       and cycleway:left=lane  ( or reversedirection=yes cycleway:left:oneway=no )
+
+# road costed like a bike path: bike track with asphalt/concrete surface, or painted bike lane;
+# other on-road tracks are costed as the road (most are old paving-stone tracks, and the data has no side-specific track surface)
+assign has_bikeway_on_road
     and highway=trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road
-        cycleway:surface=asphalt|concrete
+        or and has_cycletrack cycleway:surface=asphalt|concrete
+           has_bikelane
 
 # busy main road: estimated traffic class 4 or higher, or no traffic estimate
 assign is_main_road highway=primary|primary_link|secondary|secondary_link|tertiary|tertiary_link
@@ -170,9 +179,9 @@ assign onewaypenalty =
        )
        else 0.0
 
-# estimated motor traffic; not on roads with a smooth bike track
+# estimated motor traffic; not on roads with a smooth bike track or bike lane
 assign trafficpenalty =
-    if has_cycletrack_on_road then 0
+    if has_bikeway_on_road then 0
     else if highway=primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|road|service|living_street then
     (
       if      estimated_traffic_class=3   then 0.5
@@ -183,9 +192,9 @@ assign trafficpenalty =
     )
     else 0
 
-# speed limit; only on busy main roads without a smooth bike track
+# speed limit; only on busy main roads without a smooth bike track or bike lane
 assign maxspeedpenalty =
-    if has_cycletrack_on_road then 0
+    if has_bikeway_on_road then 0
     else if not is_busy_road then 0
     else if maxspeed=70  then 0.3
     else if maxspeed=80  then 0.5
@@ -215,9 +224,9 @@ assign pavedpenalty
         switch is_big_cycleroute ( multiply CycleRoutePavedShare PavedPenalty ) PavedPenalty
         0
 
-# cobblestones / sett; not on roads with a bike track
+# cobblestones / sett; not on roads with a smooth bike track (a bike lane lies on the cobbles)
 assign cobblepenalty
-    switch and surface=cobblestone|sett not has_cycletrack_on_road CobblePenalty 0
+    switch and surface=cobblestone|sett not and has_bikeway_on_road not has_bikelane CobblePenalty 0
 
 assign pavingpenalty
     switch is_brick_bikeway PavingStonesPenalty 0
@@ -243,7 +252,7 @@ assign costfactor
 
   switch highway=motorway|motorway_link              10000
   switch route=ferry                                 switch ferries_allowed 5.67 10000
-  switch has_cycletrack_on_road                      CycleTrackCostfactor
+  switch has_bikeway_on_road                         CycleTrackCostfactor
   switch highway=trunk|trunk_link                    10
   # quiet main roads (traffic class 1-3) cost about as much as unclassified roads
   switch highway=primary|primary_link                switch is_busy_road ( multiply MainRoadFactor switch any_cycleroute 4.0 4.8 ) 1.5
