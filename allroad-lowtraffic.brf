@@ -2,16 +2,22 @@
 #
 # Allroad bike profile based on bikerouter.de's "Rennrad (sehr wenig Verkehr)" profile,
 # itself derived from BRouter's fastbike profile (additive cost model).
-# - Avoids main roads, high estimated traffic and fast roads.
-# - Roads with a bike track mapped on them count as bike paths.
+# - Avoids main roads with high estimated traffic; quiet main roads are fine at any speed limit.
+# - Avoids bike paths and sidewalks of paving stones, sett or cobbles; rides the road instead.
+# - Roads with a bike track mapped on them count as bike paths only with asphalt/concrete track surface.
 # - Allows smooth gravel / compacted forest roads and big signed cycle routes (EuroVelo, national, regional).
 # - Avoids sand, mud and grass tracks, grade4-5 tracks and unpaved paths without bicycle designation.
 #
-# Default tuning gives about 70 % paved / 30 % unpaved around Berlin. Raise PavedPenalty for more gravel.
+# Default tuning gives about 72 % paved / 28 % unpaved around Berlin. Raise PavedPenalty for more gravel.
 
 ---context:global
 
 assign validForBikes 1
+
+# +++ Search: most ways cost well above 1 per metre here, so the A* estimate is
+# scaled up. Same routes as the defaults on 40 test routes, about half the time.
+assign pass1coefficient 8
+assign pass2coefficient 2
 
 # +++ Cost parameters (base cost of an asphalt cycleway = 1.0)
 assign GravelCostfactor       = 0.8  # %GravelCostfactor% | Base cost of smooth gravel / compacted forest roads | number
@@ -20,10 +26,12 @@ assign UnknownTrackCostfactor = 3.0  # %UnknownTrackCostfactor% | Base cost of g
 assign UnpavedCostfactor      = 25.0 # %UnpavedCostfactor% | Base cost of all other unpaved ways (sand, mud, unpaved paths, ...) | number
 assign CycleRouteCostfactor   = 1.0  # %CycleRouteCostfactor% | Base cost of paved ways on big signed cycle routes | number
 assign CycleTrackCostfactor   = 1.3  # %CycleTrackCostfactor% | Base cost of a road with a bike track mapped on it | number
-assign MainRoadFactor         = 2.0  # %MainRoadFactor% | Multiplier for primary/secondary/tertiary base costs above 30 km/h (higher = avoid more) | number
+assign MainRoadFactor         = 2.0  # %MainRoadFactor% | Multiplier for base costs of busy primary/secondary/tertiary roads (higher = avoid more) | number
 assign PavedPenalty           = 2.0  # %PavedPenalty% | Extra cost on paved ways (higher = more gravel) | number
 assign CobblePenalty          = 3.0  # %CobblePenalty% | Extra cost on cobblestones / sett | number
+assign PavingStonesPenalty    = 20.0 # %PavingStonesPenalty% | Extra cost on bike paths and sidewalks of paving stones, sett or cobbles (20 = only used without alternative) | number
 assign CycleRoutePavedShare   = 0.5  # %CycleRoutePavedShare% | Share of PavedPenalty paid on big cycle routes (0 = routes preferred, 1 = no route bonus) | number
+assign TurnCost               = 150  # %TurnCost% | Cost of a 90 degree turn (higher = fewer detours around single blocks) | number
 
 # +++ Switches
 assign ferries_allowed   = false     # %ferries_allowed% | Allow ferries | boolean
@@ -61,11 +69,18 @@ assign has_cycletrack
     or and cycleway:right=track ( or reversedirection= cycleway:right:oneway=no )
        and cycleway:left=track  ( or reversedirection=yes cycleway:left:oneway=no )
 
+# counts as a bike path only with asphalt/concrete track surface; otherwise the road is costed as a road
+# (most on-road tracks are old paving-stone tracks; the data has no side-specific track surface)
 assign has_cycletrack_on_road
-    and has_cycletrack highway=trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road
+    and has_cycletrack
+    and highway=trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service|road
+        cycleway:surface=asphalt|concrete
 
-# speed limit 30 km/h or lower: no MainRoadFactor, half traffic penalty (avoids detours around short calm stretches)
-assign is_slow_road maxspeed=30|20|10
+# busy main road: estimated traffic class 4 or higher, or no traffic estimate
+assign is_main_road highway=primary|primary_link|secondary|secondary_link|tertiary|tertiary_link
+assign is_busy_road
+    and is_main_road
+        or estimated_traffic_class=4|5|6|7 estimated_traffic_class=
 
 # --- Surface classes
 
@@ -93,6 +108,11 @@ assign is_ok_unpaved_track
     and not surface=sand|mud|grass|clay
     and not tracktype=grade4|grade5
         not smoothness=very_bad|horrible|very_horrible|impassable
+
+# bike paths and sidewalks of paving stones, sett or cobbles; the bike lane's own surface counts first
+assign is_brick_bikeway
+    and highway=cycleway|path|footway|bridleway
+        switch cycleway:surface= surface=paving_stones|sett|cobblestone cycleway:surface=paving_stones|sett|cobblestone
 
 # --- Access
 
@@ -150,10 +170,10 @@ assign onewaypenalty =
        )
        else 0.0
 
-# estimated motor traffic; not on roads with a bike track, half on slow roads
+# estimated motor traffic; not on roads with a smooth bike track
 assign trafficpenalty =
     if has_cycletrack_on_road then 0
-    else multiply ( switch is_slow_road 0.5 1 ) if highway=primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|road|service|living_street then
+    else if highway=primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|road|service|living_street then
     (
       if      estimated_traffic_class=3   then 0.5
       else if estimated_traffic_class=4   then 1.5
@@ -163,9 +183,10 @@ assign trafficpenalty =
     )
     else 0
 
-# speed limit; not on roads with a bike track
+# speed limit; only on busy main roads without a smooth bike track
 assign maxspeedpenalty =
     if has_cycletrack_on_road then 0
+    else if not is_busy_road then 0
     else if maxspeed=70  then 0.3
     else if maxspeed=80  then 0.5
     else if maxspeed=90  then 0.8
@@ -198,9 +219,12 @@ assign pavedpenalty
 assign cobblepenalty
     switch and surface=cobblestone|sett not has_cycletrack_on_road CobblePenalty 0
 
+assign pavingpenalty
+    switch is_brick_bikeway PavingStonesPenalty 0
+
 # --- Costs read by the engine
 
-assign turncost    switch junction=roundabout 0 90
+assign turncost    switch junction=roundabout 0 TurnCost
 assign initialcost switch route=ferry 10000 0
 
 # costfactor = penalties + base cost by way type (first match wins)
@@ -215,14 +239,16 @@ assign costfactor
   add maxspeedpenalty
   add pavedpenalty
   add cobblepenalty
+  add pavingpenalty
 
   switch highway=motorway|motorway_link              10000
   switch route=ferry                                 switch ferries_allowed 5.67 10000
   switch has_cycletrack_on_road                      CycleTrackCostfactor
   switch highway=trunk|trunk_link                    10
-  switch highway=primary|primary_link                multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 4.0 4.8
-  switch highway=secondary|secondary_link            multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 3.0 4.0
-  switch highway=tertiary|tertiary_link              switch isunpaved UnpavedCostfactor multiply ( switch is_slow_road 1 MainRoadFactor ) switch any_cycleroute 2.0 2.5
+  # quiet main roads (traffic class 1-3) cost about as much as unclassified roads
+  switch highway=primary|primary_link                switch is_busy_road ( multiply MainRoadFactor switch any_cycleroute 4.0 4.8 ) 1.5
+  switch highway=secondary|secondary_link            switch is_busy_road ( multiply MainRoadFactor switch any_cycleroute 3.0 4.0 ) 1.3
+  switch highway=tertiary|tertiary_link              switch isunpaved UnpavedCostfactor switch is_busy_road ( multiply MainRoadFactor switch any_cycleroute 2.0 2.5 ) 1.1
   switch is_smooth_gravel                            GravelCostfactor
   switch and is_big_cycleroute and ( or ispaved surface= ) highway=cycleway|path|track|road|unclassified|residential|living_street|service  CycleRouteCostfactor
   switch highway=unclassified                        switch isunpaved UnpavedCostfactor 1.0

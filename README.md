@@ -6,12 +6,14 @@ A [BRouter](https://github.com/abrensch/brouter) routing profile for allroad and
 
 | Way type | Behaviour |
 |---|---|
-| Primary, secondary, tertiary roads | Avoided: higher base cost, traffic penalty from `estimated_traffic_class`, penalty for 70–100 km/h limits |
-| Main roads with 30 km/h limit or lower | Avoided less, so short calm stretches are not bypassed with detours |
-| Roads with a bike track mapped on the road (`cycleway*=track`) | Treated like a bike path |
-| Big signed cycle routes (EuroVelo, national, regional) | Preferred when paved |
+| Busy primary, secondary, tertiary roads (`estimated_traffic_class` 4–7 or no estimate) | Avoided: higher base cost, traffic penalty, penalty for 70–100 km/h limits |
+| Quiet primary, secondary, tertiary roads (`estimated_traffic_class` 1–3) | Allowed at about the cost of unclassified roads, whatever the speed limit |
+| Bike paths and sidewalks of paving stones, sett or cobbles (`cycleway:surface`, else `surface`) | Used only where no other way exists |
+| Roads with a bike track mapped on the road (`cycleway*=track`) | Treated like a bike path only with `cycleway:surface=asphalt\|concrete`; otherwise costed as the road |
+| Big signed cycle routes (EuroVelo, national, regional) | Preferred when paved and not paving stones |
 | Smooth gravel (`compacted`, `fine_gravel`, `gravel` on grade1–3 tracks) | Preferred |
-| Cobblestones / sett | Avoided |
+| Cobblestones / sett on roads | Avoided |
+| Turns | Cost 150 per 90° turn, against detours around single blocks |
 | Dirt, ground or untagged tracks; dirt or ground paths marked for bikes | Allowed at moderate cost |
 | Sand, mud and grass tracks and paths, grade4–5 tracks, unpaved paths without bicycle designation | Avoided |
 | Climbs and descents | Free by default |
@@ -28,9 +30,11 @@ Base cost of an asphalt cycleway = 1.0.
 | `UnpavedCostfactor` | 25.0 | Base cost of all other unpaved ways |
 | `CycleRouteCostfactor` | 1.0 | Base cost of paved ways on big signed cycle routes |
 | `CycleTrackCostfactor` | 1.3 | Base cost of a road with a bike track mapped on it |
-| `MainRoadFactor` | 2.0 | Multiplier for main road base costs above 30 km/h |
+| `MainRoadFactor` | 2.0 | Multiplier for base costs of busy main roads |
 | `PavedPenalty` | 2.0 | Extra cost on paved ways; higher = more gravel |
 | `CobblePenalty` | 3.0 | Extra cost on cobblestones / sett |
+| `PavingStonesPenalty` | 20.0 | Extra cost on bike paths and sidewalks of paving stones, sett or cobbles |
+| `TurnCost` | 150 | Cost of a 90° turn; higher values also keep routes longer on busy roads |
 | `CycleRoutePavedShare` | 0.5 | Share of `PavedPenalty` paid on big cycle routes; 0 = routes preferred, 1 = no route bonus |
 | `consider_elevation` | false | Penalise climbs and descents |
 | `ferries_allowed` | false | Allow ferries |
@@ -38,20 +42,37 @@ Base cost of an asphalt cycleway = 1.0.
 
 ## Test results
 
-BRouter 1.7.10, routing data `E10_N50.rd5` of 2026-10-04, default settings of both profiles. Totals over 9 routes:
+BRouter 1.7.11-beta, routing data `E10_N50.rd5` downloaded 2026-09-21, default settings of both profiles. Totals over 9 routes:
 
 | | Rennrad (sehr wenig Verkehr) | allroad-lowtraffic |
 |---|---|---|
-| Total distance | 212.9 km | 243.7 km |
-| Unpaved share | 2 % | 30 % |
-| On big signed cycle routes | 46.5 km | 125.4 km |
-| On smooth gravel | 0.2 km | 63.6 km |
-| Primary / secondary roads without bike track | 38.0 km | 3.8 km |
-| Other roads with estimated traffic class ≥ 4 | 9.7 km | 1.9 km |
-| Cobblestones / sett | 1.3 km | 2.0 km |
-| Sand | 0 km | 0 km |
+| Total distance | 221.7 km | 243.0 km |
+| Unpaved share | 0 % | 28 % |
+| On big signed cycle routes | 78.1 km | 107.3 km |
+| On smooth gravel | 0.2 km | 65.4 km |
+| Bike paths and sidewalks of paving stones, sett or cobbles | 14.0 km | 0.9 km |
+| Busy main roads (`estimated_traffic_class` ≥ 4) | 51.3 km | 8.3 km |
+| Quiet main roads (`estimated_traffic_class` ≤ 3) | 12.8 km | 30.2 km |
+| Cobblestones / sett on roads | 2.2 km | 2.1 km |
+| Sand | 0 km | 0.1 km |
+| Turns over 60° per 100 km | 70 | 86 |
 
 Routes: Alexanderplatz–Bernau, Kreuzberg–Potsdam, Köpenick–Erkner, Oranienburg–Pankow, Königs Wusterhausen–Neukölln, Bernau–Eberswalde, Potsdam–Werder, Erkner–Fürstenwalde, Oranienburg–Liebenwalde.
+
+## Search speed
+
+The profile sets `pass1coefficient 8` and `pass2coefficient 2`. Most ways here cost well above 1 per metre (about 4.3 on average over 6 test routes), so BRouter's default estimate of 1.5 makes the search explore far too much.
+
+Measured with BRouter 1.7.11-beta on an idle server:
+
+| Setting | 6 routes (Berlin, Brandenburg) | Routes |
+|---|---|---|
+| defaults | 11.3 s | reference |
+| `pass1coefficient 8` | 7.4 s | identical |
+| `pass1coefficient 8`, `pass2coefficient 2` | 5.9 s | identical |
+| `pass1coefficient 8`, `pass2coefficient 4` | 3.1 s | total cost +0.05 % |
+
+The chosen setting returned identical routes (same cost, length and points) on 40 routes: the 9 test routes above and 31 random pairs across Berlin and Brandenburg.
 
 ## Credits
 
